@@ -11,6 +11,7 @@ const knex = require('knex')({
     useNullAsDefault: true
 });
 
+/* Creating all tables for the database if they do not exist */
 knex.schema.hasTable('employees').then(async exists => {
     if (!exists) {
         return knex.schema.createTable('employees', table => {
@@ -36,6 +37,21 @@ knex.schema.hasTable('carmodels').then(async exists => {
     }
 });
 
+knex.schema.hasTable('users').then(async exists => {
+    if (!exists) {
+        return knex.schema.createTable('users', table => {
+            table.increments('uid').notNullable().primary();
+            table.string('name').notNullable();
+            table.string('password').notNullable();
+            table.string('email').notNullable().unique();
+            table.integer('employee_id').nullable()
+                .references('id').inTable('employees').defaultTo(null);
+            })
+            .then(() => console.log('Users table created'))
+            .catch(err => console.log(`Error creating table 'users': ${err}`));
+    }
+});
+
 knex.schema.hasTable('sales').then(async exists => {
     if (!exists) {
         return knex.schema.createTable('sales', table => {
@@ -54,14 +70,6 @@ knex.schema.hasTable('sales').then(async exists => {
     }
 });
 
-// const TOTAL_SALES_VIEW = `
-    // SELECT      SUM(price) AS total_sales
-    // FROM        sales
-    // JOIN        carmodels ON carmodels.id = sales.carmodel_id
-    // JOIN        employees ON employees.id = sales.employee_id
-    // GROUP BY    employees.id
-    // $$ language 'sqlite'`;
-
 /**
  * A function which returns the total sales of all employees
  * (the sum of all of their sales)
@@ -71,11 +79,13 @@ knex.totalSales = () => {
         .join('carmodels', 'sales.carmodel_id', 'carmodels.id')
         .join('employees', 'sales.employee_id', 'employees.id')
         .groupBy('employees.id')
-        .select('name', 'employees.id AS employee_id', knex.raw('SUM(carmodels.price) AS sales'));
+        .select('name', 'employees.id AS employee_id', 
+            knex.raw('COALESCE(SUM(carmodels.price), 0) AS sales')
+        );
 }
 
 /**
- * Resets and seeds the database using the data found in 'data.json'
+ * Resets and seeds the database using the data found in 'db/data.json'
  */
 knex.resetDb = () => {
     const seedPath = path.resolve(__dirname, 'db/data.json');
@@ -83,6 +93,7 @@ knex.resetDb = () => {
     knex('sales').del()
         .then(() => knex('carmodels').del())
         .then(() => knex('employees').del())
+        .then(() => knex('users').del())
         .then(() => knex('employees').insert(seed.employees))
         .then(() => knex('carmodels').insert(seed.carmodels))
         .then(() => knex('sales').insert(seed.sales))
